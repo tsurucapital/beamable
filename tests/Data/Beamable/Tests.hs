@@ -47,8 +47,8 @@ type TestBeamable a = a -> Bool
 testBeamable :: (Arbitrary a, Beamable a, Eq a) => TestBeamable a
 testBeamable value = B.null bs' && value' == value
   where
-    bs            = toByteString $ beamIt value
-    (value', bs') = unbeamIt bs
+    bs            = toByteString $ beam value
+    (value', bs') = unbeam bs
 
 instance Arbitrary B.ByteString where
     arbitrary = C8.pack `fmap` arbitrary
