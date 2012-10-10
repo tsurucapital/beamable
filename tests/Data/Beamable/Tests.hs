@@ -1,17 +1,32 @@
-{-# OPTIONS -Wall -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
+module Data.Beamable.Tests
+    ( tests
+    ) where
 
-import Data.Beamable
-
-import Test.QuickCheck (Property, forAll, quickCheck)
-import Test.QuickCheck.Arbitrary
 import Blaze.ByteString.Builder
-
-import Data.Int
-import Data.Word
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as C8
 import qualified Data.ByteString.Lazy as BL
+import Data.Int
+import Data.Word
+import Test.Framework (Test, testGroup)
+import Test.Framework.Providers.QuickCheck2 (testProperty)
+import Test.QuickCheck (Property, forAll)
+import Test.QuickCheck.Arbitrary
 
+import Data.Beamable
+
+tests :: Test
+tests = testGroup "Data.Beamable.Tests"
+    [ testProperty "beamableWordProp"   beamableWordProp
+    , testProperty "beamableIntProp"    beamableIntProp
+    , testProperty "beamableIntsProp"   beamableIntsProp
+    , testProperty "beamableEitherProp" beamableEitherProp
+    , testProperty "beamableBoolProp"   beamableBoolProp
+    , testProperty "beamableBSProp"     beamableBSProp
+    , testProperty "beamableBSLProp"    beamableBSLProp
+    , testProperty "beamableStringProp" beamableStringProp
+    ]
 
 beamableWordProp :: Property
 beamableWordProp =
@@ -76,15 +91,3 @@ instance Arbitrary B.ByteString where
 instance Arbitrary BL.ByteString where
     arbitrary = BL.pack `fmap` arbitrary
     shrink = map BL.pack . shrink . BL.unpack
-
-
-_unitTest :: IO ()
-_unitTest = do
-    quickCheck beamableWordProp
-    quickCheck beamableIntProp
-    quickCheck beamableIntsProp
-    quickCheck beamableEitherProp
-    quickCheck beamableBSProp
-    quickCheck beamableBSLProp
-    quickCheck beamableBoolProp
-    quickCheck beamableStringProp
