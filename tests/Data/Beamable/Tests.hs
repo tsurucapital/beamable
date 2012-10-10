@@ -11,78 +11,37 @@ import Data.Int
 import Data.Word
 import Test.Framework (Test, testGroup)
 import Test.Framework.Providers.QuickCheck2 (testProperty)
-import Test.QuickCheck (Property, forAll)
 import Test.QuickCheck.Arbitrary
 
 import Data.Beamable
 
 tests :: Test
 tests = testGroup "Data.Beamable.Tests"
-    [ testProperty "beamableWordProp"   beamableWordProp
-    , testProperty "beamableIntProp"    beamableIntProp
-    , testProperty "beamableIntsProp"   beamableIntsProp
-    , testProperty "beamableEitherProp" beamableEitherProp
-    , testProperty "beamableBoolProp"   beamableBoolProp
-    , testProperty "beamableBSProp"     beamableBSProp
-    , testProperty "beamableBSLProp"    beamableBSLProp
-    , testProperty "beamableStringProp" beamableStringProp
+    [ testProperty "testBeamable Words"
+        (testBeamable :: TestBeamable (Word8, Word16, Word32, Word64, Word))
+    , testProperty "testBeamable Int" 
+        (testBeamable :: TestBeamable Int)
+    , testProperty "testBeamable Ints"
+        (testBeamable :: TestBeamable (Int8, Int16, Int32, Int64, Int))
+    , testProperty "testBeamable Either"
+        (testBeamable :: TestBeamable (Either Double Float))
+    , testProperty "testBeamable Bool"
+        (testBeamable :: TestBeamable (Maybe Bool))
+    , testProperty "testBeamable BS"
+        (testBeamable :: TestBeamable B.ByteString)
+    , testProperty "testBeamable LBS"
+        (testBeamable :: TestBeamable BL.ByteString)
+    , testProperty "testBeamable String"
+        (testBeamable :: TestBeamable String)
     ]
 
-beamableWordProp :: Property
-beamableWordProp =
-    forAll arbitrary $ \value ->
-    let bs = toByteString $ beamIt value
-        (value', bs') = unbeamIt bs
-        in B.null bs' && value' == (value :: (Word8, Word16, Word32, Word64, Word))
+type TestBeamable a = a -> Bool
 
-beamableIntProp :: Property
-beamableIntProp =
-    forAll arbitrary $ \value ->
-    let bs = toByteString $ beamIt value
-        (value', bs') = unbeamIt bs
-        in B.null bs' && value' == (value :: Int)
-
-beamableIntsProp :: Property
-beamableIntsProp =
-    forAll arbitrary $ \value ->
-    let bs = toByteString $ beamIt value
-        (value', bs') = unbeamIt bs
-        in B.null bs' && value' == (value :: (Int8, Int16, Int32, Int64, Int))
-
-beamableEitherProp :: Property
-beamableEitherProp =
-    forAll arbitrary $ \value ->
-    let bs = toByteString $ beamIt value
-        (value', bs') = unbeamIt bs
-        in B.null bs' && value' == (value :: [Either Double Float])
-
-beamableBoolProp :: Property
-beamableBoolProp =
-    forAll arbitrary $ \value ->
-    let bs = toByteString $ beamIt value
-        (value', bs') = unbeamIt bs
-        in B.null bs' && value' == (value :: Maybe Bool)
-
-beamableBSProp :: Property
-beamableBSProp =
-    forAll arbitrary $ \value ->
-    let bs = toByteString $ beamIt value
-        (value', bs') = unbeamIt bs
-        in B.null bs' && value' == (value :: B.ByteString)
-
-beamableBSLProp :: Property
-beamableBSLProp =
-    forAll arbitrary $ \value ->
-    let bs = toByteString $ beamIt value
-        (value', bs') = unbeamIt bs
-        in B.null bs' && value' == (value :: BL.ByteString)
-
-beamableStringProp :: Property
-beamableStringProp =
-    forAll arbitrary $ \value ->
-    let bs = toByteString $ beamIt value
-        (value', bs') = unbeamIt bs
-        in B.null bs' && value' == (value :: String)
+testBeamable :: (Arbitrary a, Beamable a, Eq a) => TestBeamable a
+testBeamable value = B.null bs' && value' == value
+  where
+    bs            = toByteString $ beamIt value
+    (value', bs') = unbeamIt bs
 
 instance Arbitrary B.ByteString where
     arbitrary = C8.pack `fmap` arbitrary
