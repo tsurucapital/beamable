@@ -44,11 +44,29 @@ tests = testGroup "Data.Beamable.Tests"
 
 type TestBeamable a = a -> Bool
 
-testBeamable :: (Arbitrary a, Beamable a, Eq a) => TestBeamable a
-testBeamable value = B.null bs' && value' == value
-  where
-    bs            = toByteString $ beam value
-    (value', bs') = unbeam bs
+testBeamable :: (Beamable a, Eq a, Show a) => TestBeamable a
+testBeamable value = testLowlevel && testLive && testLiveChunked
+    where
+
+        testLowlevel = B.null bs' && value' == value
+            where
+                bs            = toByteString $ beam value
+                (value', bs') = unbeam bs
+
+
+        testLive = B.null bs' && value' == value
+            where
+                bs = encodeLive value
+                Right (value', bs') = feed decodeLive bs
+
+        testLiveChunked = B.null bs' && value' == value
+            where
+                bss = map B.singleton . B.unpack $ encodeLive value
+                Right (value', bs') = foldl f (Left decodeLive) (trace (show bss) $ bss)
+
+                f (Left d) chunk = trace ("feeding " ++ show chunk) $ feed d chunk
+                f (Right r) chunk = error $ "got result " ++ show r ++ "; and chunk"
+
 
 instance Arbitrary B.ByteString where
     arbitrary = C8.pack `fmap` arbitrary

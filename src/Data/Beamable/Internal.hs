@@ -283,9 +283,9 @@ instance Beamable a => Beamable (Maybe a)
 instance Beamable Bool
 
 instance Beamable a => Beamable [a] where
-    beam xs = beamInt (length xs) `mappend` mconcat (map beam xs)
-    unbeam bs = let (cnt, bs') = unbeamInt bs
-                  in unfoldCnt cnt unbeam bs'
+    beam xs = beamWord (fromIntegral $ length xs) `mappend` mconcat (map beam xs)
+    unbeam bs = let (cnt, bs') = unbeamWord bs
+                  in unfoldCnt (fromIntegral cnt) unbeam bs'
     typeSignR prev _ = signMur ('L', typeSignR prev (undefined :: a))
 
 unfoldCnt :: Int -> (b -> (a, b)) -> b -> ([a], b)
@@ -296,8 +296,8 @@ unfoldCnt cnt_i f = unfoldCnt' [] cnt_i
                               in unfoldCnt' (x:xs) (cnt - 1) b'
 
 instance Beamable ByteString where
-    beam bs = beamInt (B.length bs) `mappend` fromByteString bs
-    unbeam = uncurry B.splitAt . unbeamInt
+    beam bs = beamWord (fromIntegral $ B.length bs) `mappend` fromByteString bs
+    unbeam = uncurry (B.splitAt . fromIntegral) . unbeamWord
     typeSignR _ _ = signMur "ByteString.Strict"
 
 instance Beamable BL.ByteString where
