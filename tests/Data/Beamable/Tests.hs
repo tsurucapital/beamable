@@ -62,9 +62,9 @@ testBeamable value = testLowlevel && testLive && testLiveChunked
         testLiveChunked = B.null bs' && value' == value
             where
                 bss = map B.singleton . B.unpack $ encodeLive value
-                Right (value', bs') = foldl f (Left decodeLive) (trace (show bss) $ bss)
+                Right (value', bs') = foldl f (Left decodeLive) bss
 
-                f (Left d) chunk = trace ("feeding " ++ show chunk) $ feed d chunk
+                f (Left d)  chunk = feed d chunk
                 f (Right r) chunk = error $ "got result " ++ show r ++ "; and chunk"
 
 
