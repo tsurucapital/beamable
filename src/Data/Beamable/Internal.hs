@@ -2,12 +2,15 @@
 {-# LANGUAGE DeriveGeneric, TypeOperators, FlexibleContexts, DefaultSignatures #-}
 {-# LANGUAGE FlexibleInstances, ScopedTypeVariables, BangPatterns #-}
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 
 module Data.Beamable.Internal
     ( Beamable
     , beam
     , unbeam
     , typeSign
+    , TypeSign (..)
     ) where
 
 import Data.Beamable.Util
@@ -35,7 +38,7 @@ class Beamable a where
     -- | Deserialize next value from 'ByteString', also returns leftovers
     unbeam :: ByteString -> (a, ByteString)
     -- | Get value's type signature, should work fine on 'undefined' values
-    typeSign :: a -> Word64
+    typeSignR :: [String] -> a -> Word64
 
     -- by default let's use generic version
 
@@ -45,9 +48,12 @@ class Beamable a where
     default unbeam :: (Generic a, GBeamable (Rep a)) => ByteString -> (a, ByteString)
     unbeam v = first to $ gunbeam v (0,0)
 
-    default typeSign :: (Generic a, GBeamable (Rep a)) => a -> Word64
-    typeSign v = gtypeSign (from v)
+    default typeSignR :: (Generic a, GBeamable (Rep a)) => [String] -> a -> Word64
+    typeSignR prev v = gtypeSign prev (from v)
 
+
+typeSign :: Beamable a => a -> Word64
+typeSign = typeSignR []
 
 signMur :: Hashable64 a => a -> Word64
 signMur !a = asWord64 $ hash64 a
@@ -70,27 +76,31 @@ unbeamEnum bs = let (i, bs') = unbeamInt bs in (toEnum i, bs')-- }}}
 class GBeamable f where
     gbeam   :: f a        -> (Int, Word) -> Builder
     gunbeam :: B.ByteString -> (Int, Word) -> (f a, B.ByteString)
-    gtypeSign :: f a        -> Word64
+    gtypeSign :: [String] -> f a -> Word64
 
 -- this instance used for datatypes with single constructor only
 instance (GBeamable a, Datatype d, Constructor c) => GBeamable (M1 D d (M1 C c a)) where
     gbeam  (M1 (M1 x)) = gbeam x
     gunbeam x = first M1 . gunbeam x
-    gtypeSign x = signMur (datatypeName x, ':', gtypeSign (unM1 x))
+    gtypeSign prev x | elem (datatypeName x) prev = signMur (datatypeName x, '_')
+    gtypeSign prev x = signMur (datatypeName x, ':', gtypeSign (datatypeName x : prev) (unM1 x))
 
 -- this instance used for  datatypes with multiple constructors and
 -- values are prefixed by uniq number for each constructor
 instance (GBeamable a, Constructor c) => GBeamable (M1 C c a) where
     gbeam (M1 x) t@(_, dirs) = mappend (beamWord dirs) (gbeam x t)
     gunbeam bs = first M1 . gunbeam bs
-    gtypeSign x = signMur (conName x, '<', gtypeSign (unM1 x))
+    gtypeSign prev x = signMur (conName x, '<', gtypeSign prev (unM1 x))
 
 -- this instance is needed to avoid overlapping instances with (M1 D d (M1 C c a))
-instance (GBeamable a, GBeamable b) => GBeamable (M1 D c0 (a :+: b) ) where
+instance (Datatype d, GBeamable a, GBeamable b) => GBeamable (M1 D d (a :+: b) ) where
     gbeam (M1 x) = gbeam x
     gunbeam bs (lev, _) = let (dirs, bs') = unbeamWord bs
                             in first M1 $ gunbeam bs' (lev, dirs)
-    gtypeSign x = signMur (gtypeSign (unL . unM1 $ x), '|', gtypeSign (unR . unM1 $ x))
+    gtypeSign prev x | elem (datatypeName x) prev  = signMur (datatypeName x, '_')
+
+    gtypeSign prev x = signMur ( gtypeSign (datatypeName x : prev) (unL . unM1 $ x), '|'
+                               , gtypeSign (datatypeName x : prev) (unR . unM1 $ x))
 
 -- choose correct constructor based on the first word uncoded from the BS (dirs variable)
 instance (GBeamable a, GBeamable b) => GBeamable (a :+: b) where
@@ -99,29 +109,29 @@ instance (GBeamable a, GBeamable b) => GBeamable (a :+: b) where
     gunbeam bs (lev, dirs) = if testBit dirs lev
                                    then first R1 $ gunbeam bs (lev + 1, dirs)
                                    else first L1 $ gunbeam bs (lev + 1, dirs)
-    gtypeSign x = signMur (gtypeSign (unL x), '|', gtypeSign (unR x))
+    gtypeSign prev x = signMur (gtypeSign prev (unL x), '|', gtypeSign prev (unR x))
 
 instance GBeamable a => GBeamable (M1 S c a) where
     gbeam (M1 x) = gbeam x
     gunbeam bs = first M1 . gunbeam bs
-    gtypeSign ~(M1 x) = signMur ('[', gtypeSign x)
+    gtypeSign prev ~(M1 x) = signMur ('[', gtypeSign prev x)
 
 instance GBeamable U1 where
     gbeam _ _ = mempty
     gunbeam bs _ = (U1, bs)
-    gtypeSign _x = signMur 'U'
+    gtypeSign _ _x = signMur 'U'
 
 instance (GBeamable a, GBeamable b) => GBeamable (a :*: b) where
     gbeam (x :*: y) t = gbeam x t `mappend` gbeam y t
     gunbeam bs t = let (ra, bs')  = gunbeam bs t
                        (rb, bs'') = gunbeam bs' t
                    in (ra :*: rb, bs'')
-    gtypeSign ~(x :*: y) = signMur (gtypeSign x, '*', gtypeSign y)
+    gtypeSign prev ~(x :*: y) = signMur (gtypeSign prev x, '*', gtypeSign prev y)
 
 instance Beamable a => GBeamable (K1 i a) where
     gbeam (K1 x) _ = beam x
     gunbeam bs   _ = first K1 (unbeam bs)
-    gtypeSign x = signMur ('K', typeSign (unK1 x))
+    gtypeSign prev x = signMur ('K', typeSignR prev (unK1 x))
 
 
 {-
@@ -214,7 +224,7 @@ unbeamWord bs = (B.foldl f 0 this, rest)
     where
         f :: Word -> Word8 -> Word
         f i w = (i `shift` 7) .|. fromIntegral (w .&. 0x7F)
-        
+
         Just lastWord = B.findIndex (not . flip testBit 7) bs
         (this, rest) = B.splitAt (lastWord + 1) bs
 
@@ -233,26 +243,28 @@ beamWordX = beamWord . fromIntegral
 unbeamWordX :: Integral w => B.ByteString -> (w, B.ByteString)
 unbeamWordX bs = let (i, bs') = unbeamWord bs in (fromIntegral i, bs')-- }}}
 
+newtype TypeSign = TypeSign { unTypeSign :: Word64 } deriving (Num, Show, Eq, Storable)
 
 -- (de)serialization for numbers -- {{{
-instance Beamable Int    where { beam = beamInt ; unbeam = unbeamInt ; typeSign _ = signMur "Int" }
-instance Beamable Int8   where { beam = beamEnum ; unbeam = unbeamEnum ; typeSign _ = signMur "Int8" }
-instance Beamable Int16  where { beam = beamEnum ; unbeam = unbeamEnum ; typeSign _ = signMur "Int16" }
-instance Beamable Int32  where { beam = beamEnum ; unbeam = unbeamEnum ; typeSign _ = signMur "Int32" }
-instance Beamable Int64  where { beam = beamEnum ; unbeam = unbeamEnum ; typeSign _ = signMur "Int64" }
-instance Beamable Word   where { beam = beamWord ; unbeam = unbeamWord ; typeSign _ = signMur "Word" }
-instance Beamable Word8  where { beam = beamWordX ; unbeam = unbeamWordX ; typeSign _ = signMur "Word8" }
-instance Beamable Word16 where { beam = beamWordX ; unbeam = unbeamWordX ; typeSign _ = signMur "Word16" }
-instance Beamable Word32 where { beam = beamWordX ; unbeam = unbeamWordX ; typeSign _ = signMur "Word32" }
-instance Beamable Word64 where { beam = beamWordX ; unbeam = unbeamWordX ; typeSign _ = signMur "Word64" }
-instance Beamable Float  where { beam = beamStorable ; unbeam = unbeamStorable ; typeSign _ = signMur "Float" }
-instance Beamable Double where { beam = beamStorable ; unbeam = unbeamStorable ; typeSign _ = signMur "Double" }
+instance Beamable Int    where { beam = beamInt ; unbeam = unbeamInt ; typeSignR _ _ = signMur "Int" }
+instance Beamable Int8   where { beam = beamEnum ; unbeam = unbeamEnum ; typeSignR _ _ = signMur "Int8" }
+instance Beamable Int16  where { beam = beamEnum ; unbeam = unbeamEnum ; typeSignR _ _ = signMur "Int16" }
+instance Beamable Int32  where { beam = beamEnum ; unbeam = unbeamEnum ; typeSignR _ _ = signMur "Int32" }
+instance Beamable Int64  where { beam = beamEnum ; unbeam = unbeamEnum ; typeSignR _ _ = signMur "Int64" }
+instance Beamable Word   where { beam = beamWord ; unbeam = unbeamWord ; typeSignR _ _ = signMur "Word" }
+instance Beamable Word8  where { beam = beamWordX ; unbeam = unbeamWordX ; typeSignR _ _ = signMur "Word8" }
+instance Beamable Word16 where { beam = beamWordX ; unbeam = unbeamWordX ; typeSignR _ _ = signMur "Word16" }
+instance Beamable Word32 where { beam = beamWordX ; unbeam = unbeamWordX ; typeSignR _ _ = signMur "Word32" }
+instance Beamable Word64 where { beam = beamWordX ; unbeam = unbeamWordX ; typeSignR _ _ = signMur "Word64" }
+instance Beamable Float  where { beam = beamStorable ; unbeam = unbeamStorable ; typeSignR _ _ = signMur "Float" }
+instance Beamable Double where { beam = beamStorable ; unbeam = unbeamStorable ; typeSignR _ _ = signMur "Double" }
+instance Beamable TypeSign where { beam = beamStorable ; unbeam = unbeamStorable ; typeSignR _ _ = signMur "TypeSign" }
 -- }}}
 
 instance Beamable Char where
     beam = beamWord . fromIntegral . ord
     unbeam = first (chr . fromIntegral) . unbeamWord
-    typeSign _ = signMur "Char"
+    typeSignR _ _ = signMur "Char"
 
 -- Tuples
 instance (Beamable a, Beamable b) => Beamable (a, b)
@@ -274,7 +286,7 @@ instance Beamable a => Beamable [a] where
     beam xs = beamInt (length xs) `mappend` mconcat (map beam xs)
     unbeam bs = let (cnt, bs') = unbeamInt bs
                   in unfoldCnt cnt unbeam bs'
-    typeSign _ = signMur ('L', typeSign (undefined :: a))
+    typeSignR prev _ = signMur ('L', typeSignR prev (undefined :: a))
 
 unfoldCnt :: Int -> (b -> (a, b)) -> b -> ([a], b)
 unfoldCnt cnt_i f = unfoldCnt' [] cnt_i
@@ -286,10 +298,10 @@ unfoldCnt cnt_i f = unfoldCnt' [] cnt_i
 instance Beamable ByteString where
     beam bs = beamInt (B.length bs) `mappend` fromByteString bs
     unbeam = uncurry B.splitAt . unbeamInt
-    typeSign _ = signMur "ByteString.Strict"
+    typeSignR _ _ = signMur "ByteString.Strict"
 
 instance Beamable BL.ByteString where
     beam = beam . BL.toChunks
     unbeam bs = let (chunks, bs') = unbeam bs
                   in (BL.fromChunks chunks, bs')
-    typeSign _ = signMur "ByteString.Lazy"
+    typeSignR _ _ = signMur "ByteString.Lazy"
