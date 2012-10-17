@@ -9,6 +9,7 @@ module Data.Beamable.Internal
     ( Beamable
     , beam
     , unbeam
+    , typeSignR
     , typeSign
     , TypeSign (..)
     ) where
@@ -38,6 +39,9 @@ class Beamable a where
     -- | Deserialize next value from 'ByteString', also returns leftovers
     unbeam :: ByteString -> (a, ByteString)
     -- | Get value's type signature, should work fine on 'undefined' values
+    -- takes list of strings with datatypes which already been traversed
+    -- workaround to support recursive datatypes. In most cases you should be
+    -- passing empty list in there.
     typeSignR :: [String] -> a -> Word64
 
     -- by default let's use generic version
@@ -51,7 +55,9 @@ class Beamable a where
     default typeSignR :: (Generic a, GBeamable (Rep a)) => [String] -> a -> Word64
     typeSignR prev v = gtypeSign prev (from v)
 
-
+-- | Get type signature of arbitrary Beamable datatatype encoded as Word64 hash
+-- with all constructors and datatypes in it. It's preferable to use 'typeSign'
+-- against typeSignR, because implementation of later might change.
 typeSign :: Beamable a => a -> Word64
 typeSign = typeSignR []
 
