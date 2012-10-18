@@ -25,7 +25,6 @@ import Data.Bits ((.|.), (.&.), shift, testBit)
 import Data.ByteString (ByteString)
 import Data.Char (ord, chr)
 import Data.Int (Int8, Int16, Int32, Int64)
-import Data.List (unfoldr)
 import Data.Monoid (mempty, mappend, mconcat)
 import Data.Word (Word, Word8, Word16, Word32, Word64)
 import Foreign.Storable

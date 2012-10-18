@@ -69,7 +69,7 @@ testBeamable value = testLowlevel && testLive && testLiveChunked
                 Right (value', bs') = foldl f (Left decodeLive) bss
 
                 f (Left d)  chunk = feed d chunk
-                f (Right r) chunk = error $ "got result " ++ show r ++ "; and chunk"
+                f (Right r) chunk = error $ "got result " ++ show r ++ "; and chunk" ++ show chunk
 
 
 instance Arbitrary B.ByteString where
