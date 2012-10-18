@@ -201,6 +201,12 @@ instance Beamable Char where
     unbeam = first (chr . fromIntegral) . unbeamWord
     typeSignR _ _ = signMur "Char"
 
+-- Unit
+instance Beamable () where
+    beam          = const mempty
+    unbeam bs     = ((), bs)
+    typeSignR _ _ = signMur "()"
+
 -- Tuples
 instance (Beamable a, Beamable b) => Beamable (a, b)
 instance (Beamable a, Beamable b, Beamable c) => Beamable (a, b, c)
