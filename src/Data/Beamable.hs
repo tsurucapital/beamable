@@ -34,6 +34,7 @@ import Data.Beamable.Internal
 import Blaze.ByteString.Builder
 
 import qualified Data.ByteString as B
+import Data.Word (Word)
 
 data Decoder a
     = WantAnyData
@@ -92,7 +93,7 @@ feed state next = case state of
         handlePrefix :: Beamable a => B.ByteString -> Either (Decoder a) (a, B.ByteString)
         handlePrefix bs | B.null bs = Left WantAnyData
         handlePrefix bs =
-            let (bsLength, _) = unbeam bs
+            let bsLength = (fromIntegral :: Word -> Int) $ fst $ unbeam bs
                 Just prefixLength = succ `fmap` B.findIndex (<128) bs
                 fullLength = bsLength + prefixLength
             in if fullLength <= B.length bs
