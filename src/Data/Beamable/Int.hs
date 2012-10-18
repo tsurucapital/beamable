@@ -7,6 +7,7 @@ import Data.Bits ((.|.), (.&.), shift, testBit)
 import qualified Data.ByteString as B
 import Data.List (unfoldr)
 import Data.Word (Word8)
+import Data.Int (Int64)
 
 import Blaze.ByteString.Builder
 
@@ -43,11 +44,11 @@ chunks are encoded as a single octet.
 -}
 
 -- This might not work well for 32bit platform
-beamInt :: Int -> Builder -- {{{
+beamInt :: Int64 -> Builder -- {{{
 beamInt 0 = fromWord8 0
 beamInt n = toBldr . bitmark . reverse . unfoldr f $ n
     where
-        f :: Int -> Maybe (Word8, Int)
+        f :: Int64 -> Maybe (Word8, Int64)
         f 0 = Nothing
         f x = let w = fromIntegral x .&. 0x7F :: Word8
                   rest = x `shift` (negate 7)
@@ -66,13 +67,13 @@ beamInt n = toBldr . bitmark . reverse . unfoldr f $ n
             in fromWriteList writeWord8 ws'
 
 -- This might not work well for 32bit platform
-unbeamInt :: B.ByteString -> (Int, B.ByteString)
+unbeamInt :: B.ByteString -> (Int64, B.ByteString)
 unbeamInt bs = (fixSign (B.foldl f 0 this), rest)
     where
-        f :: Int -> Word8 -> Int
+        f :: Int64 -> Word8 -> Int64
         f i w = (i `shift` 7) .|. fromIntegral (w .&. 0x7F)
 
-        fixSign :: Int -> Int
+        fixSign :: Int64 -> Int64
         fixSign x = x `shift` (64 - l * 7) `shift` (l * 7 - 64)
 
         Just lastWord = B.findIndex (not . flip testBit 7) bs

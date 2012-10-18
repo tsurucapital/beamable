@@ -6,6 +6,7 @@ module Data.Beamable.Integer
     , unbeamInteger
     ) where
 
+import Control.Arrow (first)
 import Data.ByteString (ByteString)
 import Data.Monoid (mappend)
 import Blaze.ByteString.Builder
@@ -18,9 +19,9 @@ import GHC.ST
 import Data.Beamable.Int
 
 beamInteger :: Integer -> Builder
-beamInteger (S# x#)     = beamInt (-1) `mappend` beamInt (I# x#)
+beamInteger (S# x#)     = beamInt (-1) `mappend` beamInt (fromIntegral $ I# x#)
 beamInteger (J# x# ba#) =
-    beamInt (I# baSize#) `mappend` beamInt (I# x#) `mappend`
+    beamInt (fromIntegral $ I# baSize#) `mappend` beamInt (fromIntegral $ I# x#) `mappend`
     fromWord8s [W8# (indexWord8Array# ba# i#) | I# i# <- [0 .. baSize - 1]]
   where
     baSize# = sizeofByteArray# ba#
@@ -37,8 +38,8 @@ unbeamInteger bs
 
         in (# s'''#, (J# x# ba#, B.drop (I# baSize#) bs'') #)
   where
-    !(I# baSize#, bs') = unbeamInt bs
-    !(I# x#, bs'')     = unbeamInt bs'
+    !(I# baSize#, bs') = first fromIntegral $ unbeamInt bs
+    !(I# x#, bs'')     = first fromIntegral $ unbeamInt bs'
 
     go mba# i# s#
         | i# >=# baSize# = s#
