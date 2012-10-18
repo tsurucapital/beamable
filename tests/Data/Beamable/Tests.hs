@@ -28,6 +28,8 @@ tests = testGroup "Data.Beamable.Tests"
         (testBeamable :: TestBeamable Int)
     , testProperty "testBeamable Ints"
         (testBeamable :: TestBeamable (Int8, Int16, Int32, Int64, Int))
+    , testProperty "testBeamable Integer"
+        (testBeamable :: TestBeamable Integer)
     , testProperty "testBeamable Either"
         (testBeamable :: TestBeamable (Either Double Float))
     , testProperty "testBeamable Bool"
