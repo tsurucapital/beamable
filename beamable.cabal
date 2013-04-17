@@ -16,7 +16,11 @@ version:             0.0.0.0
 synopsis:            Generic serializer/deserializer with compact representation
 
 -- A longer description of the package.
--- description:
+description:
+                     Yet another binary serialization library.  Beamable
+                     provides efficient and fast serialization, often requiring less
+                     space than alternative serializers.
+                     Incremental de-serialization is supported.
 
 -- The license under which the package is released.
 license:             BSD3
@@ -34,7 +38,7 @@ maintainer:          manpacket@gmail.com
 -- A copyright notice.
 -- copyright:
 
-category:            Data
+category:            Data, Serialization
 
 build-type:          Simple
 
@@ -83,3 +87,7 @@ test-suite beamable-tests
     ghc-prim,
     integer-gmp >= 0.4 && < 0.6,
     murmur-hash >= 0.1 && < 0.2
+
+source-repository head
+  type:                git
+  location:            git@github.com:tsurucapital/beamable.git
