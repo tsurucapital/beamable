@@ -1,4 +1,5 @@
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE UnboxedTuples #-}
 module Data.Beamable.Integer
@@ -30,7 +31,7 @@ beamInteger (J# x# ba#) =
 
 unbeamInteger :: ByteString -> (Integer, ByteString)
 unbeamInteger bs
-    | baSize# <# 0# = (S# x#, bs'')
+    | primTrue (baSize# <# 0#) = (S# x#, bs'')
     | otherwise  = runSTRep $ \s# ->
         let (# s'#, mba# #)  = newByteArray# baSize# s#
             s''#             = go mba# 0# s'#
@@ -42,9 +43,19 @@ unbeamInteger bs
     !(I# x#, bs'')     = first fromIntegral $ unbeamInt bs'
 
     go mba# i# s#
-        | i# >=# baSize# = s#
+        | primTrue (i# >=# baSize#) = s#
         | otherwise      =
             let !(W8# b#) = B.index bs'' (I# i#)
                 s'#       = writeWord8Array# mba# i# b# s#
             in go mba# (i# +# 1#) s'#
 {-# INLINE unbeamInteger #-}
+
+#if MIN_VERSION_base(4,7,0)
+primTrue :: Int# -> Bool
+primTrue x = tagToEnum# x
+-- could use isTrue#, but that will introduce extraneous error
+-- checking that we don't need.
+#else
+primTrue :: Bool -> Bool
+primTrue = id
+#endif
