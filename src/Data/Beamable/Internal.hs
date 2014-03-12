@@ -23,7 +23,7 @@ import qualified Blaze.ByteString.Builder.Internal.Write as Write
 import Data.Digest.Murmur64
 
 import Control.Arrow (first)
-import Data.Bits ((.|.), (.&.), shift, shiftR, testBit)
+import Data.Bits ((.|.), (.&.), shift, shiftL, shiftR, testBit)
 import Data.ByteString (ByteString)
 import Data.Char (ord, chr)
 import Data.Int (Int8, Int16, Int32, Int64)
@@ -96,6 +96,7 @@ instance (GBeamable a, Datatype d, Constructor c) => GBeamable (M1 D d (M1 C c a
 -- values are prefixed by uniq number for each constructor
 instance (GBeamable a, Constructor c) => GBeamable (M1 C c a) where
     gbeam (M1 x) t@(_, dirs) = mappend (beamWord $ fromIntegral dirs) (gbeam x t)
+    {-# INLINE gbeam #-}
     gunbeam bs = first M1 . gunbeam bs
     gtypeSign prev x = signMur (conName x, '<', gtypeSign prev (unM1 x))
 
@@ -112,7 +113,7 @@ instance (Datatype d, GBeamable a, GBeamable b) => GBeamable (M1 D d (a :+: b) )
 -- choose correct constructor based on the first word uncoded from the BS (dirs variable)
 instance (GBeamable a, GBeamable b) => GBeamable (a :+: b) where
     gbeam (L1 x) (lev, dirs) = gbeam x (lev + 1, dirs)
-    gbeam (R1 x) (lev, dirs) = gbeam x (lev + 1, dirs + 2^lev)
+    gbeam (R1 x) (lev, dirs) = gbeam x (lev + 1, dirs + (1 `shiftL` lev))
     gunbeam bs (lev, dirs) = if testBit dirs lev
                                    then first R1 $ gunbeam bs (lev + 1, dirs)
                                    else first L1 $ gunbeam bs (lev + 1, dirs)
