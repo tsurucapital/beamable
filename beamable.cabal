@@ -60,6 +60,7 @@ library
   other-modules:
     Data.Beamable.Int
     Data.Beamable.Integer
+    Data.Beamable.Splits
 
   -- Other library packages from which modules are imported.
   build-depends:

@@ -15,17 +15,19 @@ module Data.Beamable.Internal
 
 import Data.Beamable.Int
 import Data.Beamable.Integer
+import Data.Beamable.Splits
 import Data.Beamable.Util
 
 import Blaze.ByteString.Builder
+import qualified Blaze.ByteString.Builder.Internal.Write as Write
 import Data.Digest.Murmur64
 
 import Control.Arrow (first)
-import Data.Bits ((.|.), (.&.), shift, testBit)
+import Data.Bits ((.|.), (.&.), shift, shiftR, testBit)
 import Data.ByteString (ByteString)
 import Data.Char (ord, chr)
 import Data.Int (Int8, Int16, Int32, Int64)
-import Data.Monoid (mempty, mappend, mconcat)
+import Data.Monoid (mempty, mappend, mconcat, (<>))
 import Data.Word (Word, Word8, Word16, Word32, Word64)
 import Foreign.Storable
 import GHC.Generics
@@ -138,29 +140,37 @@ instance Beamable a => GBeamable (K1 i a) where
     gunbeam bs   _ = first K1 (unbeam bs)
     gtypeSign prev x = signMur ('K', typeSignR prev (unK1 x))
 
--- | [un]beamWord functions are a bit more efficient than [un]beamInt
--- it assumes that values are non-negative which allows more compact representation
+{-
+Beamed word representation:
+    Same as positive ints, except that the last octet is dropped if it's 0.
 
-beamWord :: Word64 -> Builder-- {{{
-beamWord 0 = fromWord8 0
-beamWord i = fromByteString . B.reverse . fst $ B.unfoldrN 10 octets (i, True)
+63     | 0 0111111
+64     | 1 1000000
+127    | 1 1111111
+128    | 1 0000000  0 0000001
+-}
+
+beamWord :: Word64 -> Builder
+beamWord !n = fromWrite $ Write.boundedWrite 10 $ beamWordPoke n
+{-# INLINE beamWord #-}
+
+beamWordPoke :: Word64 -> Write.Poke
+beamWordPoke n
+    | next == 0 = pokeWord8 firstSeptet
+    | otherwise = pokeWord8 (firstSeptet .|. 0x80) <> beamWordPoke next
     where
-        octets :: (Word64, Bool) -> Maybe (Word8, (Word64, Bool))
-        octets (x, isFirst)
-            | x > 0 = let r = (fromIntegral (x .&. 0x7F)) .|. (if isFirst then 0 else 0x80)
-                      in Just (r, (x `shift` (negate 7), False))
-            | otherwise = Nothing
+        firstSeptet :: Word8
+        firstSeptet = fromIntegral $ n .&. 0x7F
+        next = n `shiftR` 7
 
-
+{-# INLINE unbeamWord #-}
 unbeamWord :: B.ByteString -> (Word64, B.ByteString)
-unbeamWord bs = (B.foldl f 0 this, rest)
+unbeamWord bs = (B.foldr' f 0 this, rest)
     where
-        f :: Word64 -> Word8 -> Word64
-        f i w = (i `shift` 7) .|. fromIntegral (w .&. 0x7F)
-
-        Just lastWord = B.findIndex (not . flip testBit 7) bs
-        (this, rest) = B.splitAt (lastWord + 1) bs
-
+        f :: Word8 -> Word64 -> Word64
+        f w i = (i `shift` 7) .|. fromIntegral (w .&. 0x7F)
+        !(!this, !rest) = splitAtLastWord bs
+--}}
 
 {-# SPECIALIZE beamWordX :: Word8 -> Builder #-}
 {-# SPECIALIZE beamWordX :: Word16 -> Builder #-}
