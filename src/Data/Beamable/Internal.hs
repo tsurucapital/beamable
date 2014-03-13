@@ -104,7 +104,7 @@ instance (GBeamable a, Constructor c) => GBeamable (M1 C c a) where
 -- this instance is needed to avoid overlapping instances with (M1 D d (M1 C c a))
 instance (Datatype d, GBeamable a, GBeamable b) => GBeamable (M1 D d (a :+: b) ) where
     gbeam (M1 x) = gbeam x
-    gunbeam bs (lev, _) = let (dirs, bs') = unbeamWord bs
+    gunbeam bs (lev, _) = let !(!dirs, bs') = unbeamWord bs
                             in first M1 $ gunbeam bs' (lev, fromIntegral dirs)
     gtypeSign prev x | elem (datatypeName x) prev  = signMur (datatypeName x, '_')
 
@@ -113,11 +113,11 @@ instance (Datatype d, GBeamable a, GBeamable b) => GBeamable (M1 D d (a :+: b) )
 
 -- choose correct constructor based on the first word uncoded from the BS (dirs variable)
 instance (GBeamable a, GBeamable b) => GBeamable (a :+: b) where
-    gbeam (L1 x) (lev, dirs) = gbeam x (lev + 1, dirs)
-    gbeam (R1 x) (lev, dirs) = gbeam x (lev + 1, dirs + (1 `shiftL` lev))
-    gunbeam bs (lev, dirs) = if testBit dirs lev
-                                   then first R1 $ gunbeam bs (lev + 1, dirs)
-                                   else first L1 $ gunbeam bs (lev + 1, dirs)
+    gbeam (L1 x) (!lev,  dirs) = gbeam x (lev + 1, dirs)
+    gbeam (R1 x) (!lev, !dirs) = gbeam x (lev + 1, dirs + (1 `shiftL` lev))
+    gunbeam bs (lev, dirs) = let !lev' = lev+1 in if testBit dirs lev
+                                   then first R1 $ gunbeam bs (lev', dirs)
+                                   else first L1 $ gunbeam bs (lev', dirs)
     gtypeSign prev x = signMur (gtypeSign prev (unL x), '|', gtypeSign prev (unR x))
 
 instance GBeamable a => GBeamable (M1 S c a) where
@@ -132,8 +132,8 @@ instance GBeamable U1 where
 
 instance (GBeamable a, GBeamable b) => GBeamable (a :*: b) where
     gbeam (x :*: y) t = gbeam x t `mappend` gbeam y t
-    gunbeam bs t = let (ra, bs')  = gunbeam bs t
-                       (rb, bs'') = gunbeam bs' t
+    gunbeam bs t = let !(ra, bs')  = gunbeam bs t
+                       !(rb, bs'') = gunbeam bs' t
                    in (ra :*: rb, bs'')
     gtypeSign prev ~(x :*: y) = signMur (gtypeSign prev x, '*', gtypeSign prev y)
 
