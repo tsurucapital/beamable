@@ -11,6 +11,7 @@ module Data.Beamable.Internal
     , typeSignR
     , typeSign
     , TypeSign (..)
+    , Phantom (..)
     ) where
 
 import Data.Beamable.Int
@@ -256,3 +257,19 @@ instance Beamable BL.ByteString where
     unbeam bs = let (chunks, bs') = unbeam bs
                   in (BL.fromChunks chunks, bs')
     typeSignR _ _ = signMur "ByteString.Lazy"
+
+-- | @Phantom a@ has just one possible value, like @()@, and is encoded
+-- as a 0-byte sequence. However, its 'typeSign' depends on the 'typeSign'
+-- of its parameter.
+data Phantom a = Phantom
+    deriving (Show, Eq, Ord, Enum)
+
+instance Beamable a => Beamable (Phantom a) where
+    beam = const mempty
+    unbeam bs = (Phantom, bs)
+    typeSignR f _ =
+        let thisDT = "Data.Beamable.Phantom"
+            f' = thisDT:f
+        in if elem thisDT f
+               then signMur (thisDT, '_')
+               else signMur (thisDT, ':', typeSignR f' (undefined :: a))

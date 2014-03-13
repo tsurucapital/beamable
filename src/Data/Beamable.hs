@@ -23,6 +23,7 @@ module Data.Beamable
     , encodeLive
     , decodeLive
     , feed
+    , Phantom(..)
 
     -- reexport
     , Builder
