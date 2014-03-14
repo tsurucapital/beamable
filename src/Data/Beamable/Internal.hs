@@ -2,6 +2,7 @@
 {-# LANGUAGE DeriveGeneric, TypeOperators, FlexibleContexts, DefaultSignatures #-}
 {-# LANGUAGE FlexibleInstances, ScopedTypeVariables, BangPatterns #-}
 {-# LANGUAGE DoAndIfThenElse #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 
 module Data.Beamable.Internal
@@ -52,7 +53,7 @@ class Beamable a where
     beam v = gbeam (from v) (0,0)
 
     default unbeam :: (Generic a, GBeamable (Rep a)) => ByteString -> (a, ByteString)
-    unbeam v = first to $ gunbeam v (0,0)
+    unbeam v = runResult (gunbeam v (0,0)) $ \a b -> (to a, b)
 
     default typeSignR :: (Generic a, GBeamable (Rep a)) => [String] -> a -> Word64
     typeSignR prev v = gtypeSign prev (from v)
@@ -80,16 +81,22 @@ beamEnum = beamInt . fromIntegral . fromEnum
 unbeamEnum :: Enum a => ByteString -> (a, ByteString)
 unbeamEnum bs = let (i, bs') = unbeamInt bs in (toEnum (fromIntegral i), bs')-- }}}
 
+-- writing unbeam via a CPS transform seems more efficient.
+newtype Result a = Result
+    { runResult :: forall r. (a -> B.ByteString -> r) -> r }
+
+defResult :: Result a -> (a,B.ByteString)
+defResult u = runResult u (,)
 
 class GBeamable f where
     gbeam   :: f a        -> (Int, Word) -> Builder
-    gunbeam :: B.ByteString -> (Int, Word) -> (f a, B.ByteString)
+    gunbeam :: B.ByteString -> (Int, Word) -> Result (f a)
     gtypeSign :: [String] -> f a -> Word64
 
 -- this instance used for datatypes with single constructor only
 instance (GBeamable a, Datatype d, Constructor c) => GBeamable (M1 D d (M1 C c a)) where
     gbeam  (M1 (M1 x)) = gbeam x
-    gunbeam x = first M1 . gunbeam x
+    gunbeam x t = Result $ \k -> runResult (gunbeam x t) $ k . M1
     gtypeSign prev x | elem (datatypeName x) prev = signMur (datatypeName x, '_')
     gtypeSign prev x = signMur (datatypeName x, ':', gtypeSign (datatypeName x : prev) (unM1 x))
 
@@ -98,14 +105,15 @@ instance (GBeamable a, Datatype d, Constructor c) => GBeamable (M1 D d (M1 C c a
 instance (GBeamable a, Constructor c) => GBeamable (M1 C c a) where
     gbeam (M1 x) t@(_, dirs) = mappend (beamWord $ fromIntegral dirs) (gbeam x t)
     {-# INLINE gbeam #-}
-    gunbeam bs = first M1 . gunbeam bs
+    gunbeam x t = Result $ \k -> runResult (gunbeam x t) $ k . M1
     gtypeSign prev x = signMur (conName x, '<', gtypeSign prev (unM1 x))
 
 -- this instance is needed to avoid overlapping instances with (M1 D d (M1 C c a))
 instance (Datatype d, GBeamable a, GBeamable b) => GBeamable (M1 D d (a :+: b) ) where
     gbeam (M1 x) = gbeam x
-    gunbeam bs (lev, _) = let !(!dirs, bs') = unbeamWord bs
-                            in first M1 $ gunbeam bs' (lev, fromIntegral dirs)
+    gunbeam bs (lev, _) = Result $ \k ->
+        let !(!dirs, bs') = unbeamWord bs
+        in runResult (gunbeam bs' (lev, fromIntegral dirs)) $ k . M1
     gtypeSign prev x | elem (datatypeName x) prev  = signMur (datatypeName x, '_')
 
     gtypeSign prev x = signMur ( gtypeSign (datatypeName x : prev) (unL . unM1 $ x), '|'
@@ -115,31 +123,35 @@ instance (Datatype d, GBeamable a, GBeamable b) => GBeamable (M1 D d (a :+: b) )
 instance (GBeamable a, GBeamable b) => GBeamable (a :+: b) where
     gbeam (L1 x) (!lev,  dirs) = gbeam x (lev + 1, dirs)
     gbeam (R1 x) (!lev, !dirs) = gbeam x (lev + 1, dirs + (1 `shiftL` lev))
-    gunbeam bs (lev, dirs) = let !lev' = lev+1 in if testBit dirs lev
-                                   then first R1 $ gunbeam bs (lev', dirs)
-                                   else first L1 $ gunbeam bs (lev', dirs)
+    gunbeam bs (lev, dirs) = Result $ \k ->
+        let !lev' = lev+1 in if testBit dirs lev
+              then runResult (gunbeam bs (lev', dirs)) $ k . R1
+              else runResult (gunbeam bs (lev', dirs)) $ k . L1
     gtypeSign prev x = signMur (gtypeSign prev (unL x), '|', gtypeSign prev (unR x))
 
 instance GBeamable a => GBeamable (M1 S c a) where
     gbeam (M1 x) = gbeam x
-    gunbeam bs = first M1 . gunbeam bs
+    gunbeam x t = Result $ \k -> runResult (gunbeam x t) $ k . M1
     gtypeSign prev ~(M1 x) = signMur ('[', gtypeSign prev x)
 
 instance GBeamable U1 where
     gbeam _ _ = mempty
-    gunbeam bs _ = (U1, bs)
+    gunbeam bs _ = Result $ \k -> k U1 bs
     gtypeSign _ _x = signMur 'U'
 
 instance (GBeamable a, GBeamable b) => GBeamable (a :*: b) where
     gbeam (x :*: y) t = gbeam x t `mappend` gbeam y t
-    gunbeam bs t = let !(ra, bs')  = gunbeam bs t
-                       !(rb, bs'') = gunbeam bs' t
-                   in (ra :*: rb, bs'')
+    gunbeam bs t = Result $ \k ->
+        let !(ra, bs')  = defResult $ gunbeam bs t
+            !(rb, bs'') = defResult $ gunbeam bs' t
+        in k (ra :*: rb) bs''
     gtypeSign prev ~(x :*: y) = signMur (gtypeSign prev x, '*', gtypeSign prev y)
 
 instance Beamable a => GBeamable (K1 i a) where
     gbeam (K1 x) _ = beam x
-    gunbeam bs   _ = first K1 (unbeam bs)
+    gunbeam bs _ = Result $ \k ->
+        let !(a, bs') = unbeam bs
+        in k (K1 a) bs'
     gtypeSign prev x = signMur ('K', typeSignR prev (unK1 x))
 
 {-
