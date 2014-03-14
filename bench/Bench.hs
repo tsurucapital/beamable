@@ -29,8 +29,8 @@ allBenches f =
     , bgroup "Word" $ map (mkBenchGroup f) testWords
     , bench "[Int]" $ nf f testInts
     , bench "[Int]1000" $ nf f longList
-    , bench "(Word,Word)" $ nf f
-            $ head $ zip testWords (reverse testWords)
+    , bench "(Word,Word)" $ nf f ((0,1000000) :: (Word,Word))
+    , bench "(Int,Int,(Word,Int))" $ nf f ((0,23451345,(1000000,-4213)) :: (Int,Int,(Word,Int)))
     , bench "TestG1" $ nf f (TestG1 10 20 :: TestG [Int])
     , bench "TestG2" $ nf f (TestG2 [1..5] 20 :: TestG [Int])
     ]
