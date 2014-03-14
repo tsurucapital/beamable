@@ -1,4 +1,4 @@
-{-# OPTIONS -Wall #-}
+{-# OPTIONS -Wall -fno-full-laziness #-}
 {-# LANGUAGE DeriveGeneric, TypeOperators, FlexibleContexts, DefaultSignatures #-}
 {-# LANGUAGE FlexibleInstances, ScopedTypeVariables, BangPatterns #-}
 {-# LANGUAGE DoAndIfThenElse #-}
