@@ -37,7 +37,9 @@ typeSignTH :: Name -> ExpQ
 typeSignTH tname = do
     s <- newName "s"
     reify tname >>= \(TyConI dec) -> case dec of
-#if MIN_VERSION_template_haskell(2, 11, 0)
+#if MIN_VERSION_template_haskell(2, 15, 0)
+        DataInstD _ _ (AppT (ConT name) _) _ cons _   -> comb s tname name (map (signCon s) cons)
+#elif MIN_VERSION_template_haskell(2, 11, 0)
         DataD _ name _ _ cons _      -> comb s tname name (map (signCon s) cons)
         DataInstD _ name _ _ cons _  -> comb s tname name (map (signCon s) cons)
         NewtypeD _ name _ _ con _    -> comb s tname name ([signCon s con])
@@ -137,4 +139,3 @@ deserializeCons cons = do
             (Match pat) <$> (NormalB <$> getCon con) <*> pure []
         getCon con = let c = [| pure $( conE $ conName con ) |]
                       in iterate (\acc -> [| $acc <*> deserialize |] ) c !! (length $ conTypes con)
-
