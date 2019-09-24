@@ -1,6 +1,4 @@
 {-# LANGUAGE TemplateHaskell, LambdaCase, ViewPatterns #-}
-{-# LANGUAGE CPP #-}
-
 module Data.Beamable.TH ( makeBeamable ) where
 
 import Data.Beamable.Internal
@@ -8,7 +6,6 @@ import Data.Beamable.Internal
 import Control.Monad
 import Data.Digest.Murmur64
 import Data.List (foldl')
-import Data.Monoid
 import Data.Word
 import Language.Haskell.TH
 import qualified Data.Set as Set
@@ -37,17 +34,10 @@ typeSignTH :: Name -> ExpQ
 typeSignTH tname = do
     s <- newName "s"
     reify tname >>= \(TyConI dec) -> case dec of
-#if MIN_VERSION_template_haskell(2, 11, 0)
         DataD _ name _ _ cons _      -> comb s tname name (map (signCon s) cons)
-        DataInstD _ name _ _ cons _  -> comb s tname name (map (signCon s) cons)
+        DataInstD _ _ _ _ cons _  -> comb s tname s (map (signCon s) cons)
         NewtypeD _ name _ _ con _    -> comb s tname name ([signCon s con])
-        NewtypeInstD _ name _ _ con _-> comb s tname name ([signCon s con])
-#else
-        DataD _ name _ cons _       -> comb s tname name (map (signCon s) cons)
-        DataInstD _ name _ cons _   -> comb s tname name (map (signCon s) cons)
-        NewtypeD _ name _ con _     -> comb s tname name ([signCon s con])
-        NewtypeInstD _ name _ con _ -> comb s tname name ([signCon s con])
-#endif
+        NewtypeInstD _ _ _ _ con _-> comb s tname s ([signCon s con])
         _ -> error usage
 
 comb :: Name -> Name -> Name -> [ExpQ] -> ExpQ
@@ -68,36 +58,20 @@ signCon s con = do
 
 serializeTH :: Name -> ExpQ
 serializeTH name = reify name >>= \(TyConI dec) -> lamCaseE $ case dec of
-#if MIN_VERSION_template_haskell(2, 11, 0)
     DataD _ _ _ _ [con] _      -> (:[]) $ serializeCon Nothing con
     DataInstD _ _ _ _ [con] _  -> (:[]) $ serializeCon Nothing con
     NewtypeD _ _ _ _ con _     -> (:[]) $ serializeCon Nothing con
     NewtypeInstD _ _ _ _ con _ -> (:[]) $ serializeCon Nothing con
     DataD _ _ _ _ cons _       -> zipWith serializeCon (map Just [0..]) cons
     DataInstD _ _ _ _ cons _   -> zipWith serializeCon (map Just [0..]) cons
-#else
-    DataD _ _ _ [con] _      -> (:[]) $ serializeCon Nothing con
-    DataInstD _ _ _ [con] _  -> (:[]) $ serializeCon Nothing con
-    NewtypeD _ _ _ con _     -> (:[]) $ serializeCon Nothing con
-    NewtypeInstD _ _ _ con _ -> (:[]) $ serializeCon Nothing con
-    DataD _ _ _ cons _       -> zipWith serializeCon (map Just [0..]) cons
-    DataInstD _ _ _ cons _   -> zipWith serializeCon (map Just [0..]) cons
-#endif
     _ -> error usage
 
 deserializeTH :: Name -> ExpQ
 deserializeTH tname = reify tname >>= \(TyConI dec) -> case dec of
-#if MIN_VERSION_template_haskell(2, 11, 0)
     DataD _ _ _ _ cons _       -> deserializeCons cons
     DataInstD _ _ _ _ cons _   -> deserializeCons cons
     NewtypeD _ _ _ _ con _     -> deserializeCons [con]
     NewtypeInstD _ _ _ _ con _ -> deserializeCons [con]
-#else
-    DataD _ _ _ cons _       -> deserializeCons cons
-    DataInstD _ _ _ cons _   -> deserializeCons cons
-    NewtypeD _ _ _ con _     -> deserializeCons [con]
-    NewtypeInstD _ _ _ con _ -> deserializeCons [con]
-#endif
     _ -> error usage
 
 conTypes :: Con -> [Type]
@@ -105,6 +79,7 @@ conTypes (NormalC _ sts) = map snd sts
 conTypes (RecC _ vsts) = map (\(_, _, t) -> t) vsts
 conTypes (InfixC a _ b) = [snd a, snd b]
 conTypes (ForallC _ _ con) = conTypes con
+conTypes _ = error "Existential constructor? I'm sorry, Dave. I'm afraid I can't do that."
 
 conName :: Con -> Name
 conName (NormalC name _) = name
@@ -137,4 +112,3 @@ deserializeCons cons = do
             (Match pat) <$> (NormalB <$> getCon con) <*> pure []
         getCon con = let c = [| pure $( conE $ conName con ) |]
                       in iterate (\acc -> [| $acc <*> deserialize |] ) c !! (length $ conTypes con)
-

@@ -36,7 +36,6 @@ import Data.ByteString (ByteString)
 import Data.Char
 import Data.Digest.Murmur64
 import Data.List (foldl')
-import Data.Monoid ((<>))
 import Data.Proxy
 import Data.Set (Set)
 import Data.Typeable
@@ -147,6 +146,7 @@ instance Monad Decoder where
     {-# INLINE (>>) #-}
     (>>) = \dm dn -> Decoder $ \k -> runDecoder dm (\_ -> runDecoder dn k)
 
+instance MonadFail Decoder where
     fail msg = Decoder $ \_ -> Fail msg
 
 
